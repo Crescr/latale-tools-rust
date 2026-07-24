@@ -2003,7 +2003,7 @@ dependencies = [
 
 [[package]]
 name = "latale-tools"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -2017,7 +2017,7 @@ dependencies = [
 
 [[package]]
 name = "latale-tools-gui"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "latale-tools",
  "rusqlite",
