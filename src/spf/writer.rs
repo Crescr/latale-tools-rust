@@ -210,6 +210,7 @@ impl SpfWriter {
 mod tests {
     use super::*;
     use crate::spf::SpfReader;
+    use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
@@ -246,6 +247,95 @@ mod tests {
             std::fs::remove_file(path)?;
         }
 
+        Ok(())
+    }
+
+    #[test]
+    fn decrypt_copy_preserves_layout_and_metadata() -> Result<()> {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock should be after UNIX epoch")
+            .as_nanos();
+        let directory = std::env::temp_dir();
+        let encrypted_path = directory.join(format!("latale-spf-encrypted-{unique}.SPF"));
+        let plain_path = directory.join(format!("latale-spf-plain-{unique}.SPF"));
+
+        let mut writer = SpfWriter::new(3, 2_026_071_602, "GBK");
+        writer.set_encrypted(true);
+        writer.set_desc("decrypt layout test");
+        writer.add_file("DATA/LDT/FIRST.LDT".to_owned(), b"first resource".to_vec());
+        writer.add_file("DATA/LDT/SECOND.LDT".to_owned(), (0..=255).collect());
+        writer.write(&encrypted_path, None)?;
+
+        let encrypted = SpfReader::open(&encrypted_path)?;
+        let encrypted_infos = encrypted.file_infos();
+        encrypted.decrypt_to(&plain_path, None)?;
+
+        let plain = SpfReader::open(&plain_path)?;
+        let plain_infos = plain.file_infos();
+        assert!(encrypted.is_encrypted());
+        assert!(!plain.is_encrypted());
+        assert_eq!(plain.version(), encrypted.version());
+        assert_eq!(plain.header().header_size, encrypted.header().header_size);
+        assert_eq!(plain.header().file_id, encrypted.header().file_id);
+        assert_eq!(plain.header().desc, encrypted.header().desc);
+        assert_eq!(plain.total_size(), encrypted.total_size());
+        assert_eq!(plain_infos.len(), encrypted_infos.len());
+
+        for (encrypted_info, plain_info) in encrypted_infos.iter().zip(&plain_infos) {
+            assert_eq!(plain_info.file_name, encrypted_info.file_name);
+            assert_eq!(plain_info.offset, encrypted_info.offset);
+            assert_eq!(plain_info.size, encrypted_info.size);
+            assert_eq!(plain_info.res_id, encrypted_info.res_id);
+            assert_eq!(
+                plain.get_file_data(plain_info).as_ref(),
+                encrypted.get_file_data(encrypted_info).as_ref()
+            );
+        }
+        assert!(plain.verify()?.is_empty());
+        assert!(encrypted.decrypt_to(&plain_path, None).is_err());
+
+        std::fs::remove_file(encrypted_path)?;
+        std::fs::remove_file(plain_path)?;
+        Ok(())
+    }
+
+    #[test]
+    #[ignore = "requires LATALE_REAL_ENCRYPTED_SPF"]
+    fn real_encrypted_spf_decrypts_without_repacking() -> Result<()> {
+        let encrypted_path = std::env::var("LATALE_REAL_ENCRYPTED_SPF")
+            .map(PathBuf::from)
+            .expect("set LATALE_REAL_ENCRYPTED_SPF to a real encrypted SPF");
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock should be after UNIX epoch")
+            .as_nanos();
+        let plain_path = std::env::temp_dir().join(format!("latale-spf-real-plain-{unique}.SPF"));
+
+        let encrypted = SpfReader::open(&encrypted_path)?;
+        assert!(encrypted.is_encrypted());
+        encrypted.decrypt_to(&plain_path, None)?;
+
+        let plain = SpfReader::open(&plain_path)?;
+        let encrypted_infos = encrypted.file_infos();
+        let plain_infos = plain.file_infos();
+        assert!(!plain.is_encrypted());
+        assert_eq!(plain.total_size(), encrypted.total_size());
+        assert_eq!(plain_infos.len(), encrypted_infos.len());
+        for (encrypted_info, plain_info) in encrypted_infos.iter().zip(&plain_infos) {
+            assert_eq!(plain_info.file_name, encrypted_info.file_name);
+            assert_eq!(plain_info.offset, encrypted_info.offset);
+            assert_eq!(plain_info.size, encrypted_info.size);
+            assert_eq!(plain_info.res_id, encrypted_info.res_id);
+            assert_eq!(
+                plain.get_file_data(plain_info).as_ref(),
+                encrypted.get_file_data(encrypted_info).as_ref()
+            );
+        }
+        assert!(plain.verify()?.is_empty());
+
+        drop(plain);
+        std::fs::remove_file(plain_path)?;
         Ok(())
     }
 }

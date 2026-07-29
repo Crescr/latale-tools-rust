@@ -18,6 +18,7 @@ cargo build --release
 # 可用命令：
 #   info <spf_file>           - 显示 SPF 文件信息
 #   verify <spf_file>         - 验证 SPF 完整性
+#   decrypt <spf_file>        - 将加密 SPF 转为未加密副本
 #   unpack <spf_file>         - 解包 SPF 到目录
 #   pack <spf_name>           - 打包目录为 SPF
 ```

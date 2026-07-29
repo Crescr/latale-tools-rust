@@ -1,13 +1,13 @@
 # latale-spf 使用说明
 
-`latale-spf` 用于查看、验证、解包和打包 LaTale 的 SPF 资源包。它能够自动识别新版加密 SPF；查看、验证和解包时不需要额外提供密钥或参数。
+`latale-spf` 用于查看、验证、解密转换、解包和打包 LaTale 的 SPF 资源包。它能够自动识别新版加密 SPF；查看、验证、解密和解包时不需要额外提供密钥或参数。
 
 ## 准备工作
 
 Windows 发布包中的文件名包含版本和平台，例如：
 
 ```text
-latale-spf-0.0.4-windows-x64.exe
+latale-spf-0.0.5-windows-x64.exe
 ```
 
 可以直接使用完整文件名，也可以将它改名为 `latale-spf.exe`。以下示例使用改名后的文件名。
@@ -68,6 +68,23 @@ latale-spf-0.0.4-windows-x64.exe
 ```
 
 如果 SPF 已加密，程序会自动解密资源数据。输出目录会按照包内路径创建，例如 `DATA\LDT\ITEM.LDT`。
+
+## 将加密 SPF 转为未加密 SPF
+
+直接在输入文件旁生成 `ROWID-plain.SPF`：
+
+```powershell
+.\latale-spf.exe decrypt .\ROWID.SPF
+```
+
+指定输出文件：
+
+```powershell
+.\latale-spf.exe decrypt .\ROWID.SPF `
+  --output .\release\ROWID-unencrypted.SPF
+```
+
+转换直接在 SPF 副本中解密资源区和索引，不会先将包内文件释放到目录，也不会重新排序文件或生成新的 RESID。原始 SPF 不会被修改，目标文件已存在时工具会停止并报错。
 
 ## 打包 SPF
 

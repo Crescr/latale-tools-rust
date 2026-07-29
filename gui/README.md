@@ -67,8 +67,8 @@ npm run tauri build
 推送 `v*` 格式的标签也会自动构建。例如：
 
 ```bash
-git tag v0.0.4
-git push origin v0.0.4
+git tag v0.0.5
+git push origin v0.0.5
 ```
 
 下载的构建产物包括桌面版独立 EXE、NSIS 安装程序、MSI 安装包，以及

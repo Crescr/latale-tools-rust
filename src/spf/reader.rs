@@ -3,10 +3,12 @@ use crate::spf::{
     crypto, FInfo, SpfHeader, SpfRegistry, SpfVersion, FINFO_SIZE, SPF_ENCRYPTED_FLAG,
 };
 use anyhow::{bail, Context, Result};
-use memmap2::Mmap;
+use memmap2::{Mmap, MmapMut};
 use std::borrow::Cow;
-use std::fs::File;
-use std::path::Path;
+use std::fs::{File, OpenOptions};
+use std::io::Write;
+use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /// SPF 文件读取器
 pub struct SpfReader {
@@ -212,7 +214,6 @@ impl SpfReader {
     /// callback: 可选回调函数 (current, total, filename)，用于显示进度
     pub fn unpack(&self, output_dir: &Path, callback: super::ProgressCallback) -> Result<()> {
         use std::fs;
-        use std::io::Write;
 
         let finfos = self.file_infos();
         let total = finfos.len();
@@ -242,4 +243,177 @@ impl SpfReader {
 
         Ok(())
     }
+
+    /// 将加密 SPF 写为未加密副本，同时保留原始布局和元数据。
+    ///
+    /// 输出采用同目录临时文件完成，验证通过后再重命名为目标文件。
+    /// 为避免意外覆盖，目标文件已存在时直接返回错误。
+    pub fn decrypt_to(&self, output_path: &Path, callback: super::ProgressCallback) -> Result<()> {
+        if !self.encrypted {
+            bail!("Input SPF is already unencrypted");
+        }
+        if output_path.exists() {
+            bail!("Output file already exists: {}", output_path.display());
+        }
+
+        let issues = self.verify()?;
+        if !issues.is_empty() {
+            bail!(
+                "Cannot decrypt invalid SPF ({} issue(s)): {}",
+                issues.len(),
+                issues.join("; ")
+            );
+        }
+
+        if let Some(parent) = output_path.parent() {
+            if !parent.as_os_str().is_empty() {
+                std::fs::create_dir_all(parent).with_context(|| {
+                    format!("Failed to create output directory: {}", parent.display())
+                })?;
+            }
+        }
+
+        let temporary_path = temporary_output_path(output_path);
+        let result = self
+            .write_decrypted_file(&temporary_path, callback)
+            .and_then(|_| self.verify_decrypted_file(&temporary_path))
+            .and_then(|_| {
+                if output_path.exists() {
+                    bail!("Output file already exists: {}", output_path.display());
+                }
+                std::fs::rename(&temporary_path, output_path).with_context(|| {
+                    format!("Failed to move decrypted SPF to: {}", output_path.display())
+                })
+            });
+
+        if result.is_err() {
+            let _ = std::fs::remove_file(&temporary_path);
+        }
+        result
+    }
+
+    fn write_decrypted_file(
+        &self,
+        temporary_path: &Path,
+        callback: super::ProgressCallback,
+    ) -> Result<()> {
+        let finfos = self.file_infos();
+        let total = finfos.len();
+        let mut file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create_new(true)
+            .open(temporary_path)
+            .with_context(|| {
+                format!(
+                    "Failed to create temporary output: {}",
+                    temporary_path.display()
+                )
+            })?;
+
+        file.write_all(&self.mmap)
+            .context("Failed to copy source SPF")?;
+        file.flush().context("Failed to flush source SPF copy")?;
+
+        let mut output = unsafe { MmapMut::map_mut(&file) }
+            .context("Failed to mmap temporary output for decryption")?;
+
+        for (index, finfo) in finfos.iter().enumerate() {
+            let start = finfo.offset as usize;
+            let end = start + finfo.size as usize;
+            crypto::crypt_resource(
+                &mut output[start..end],
+                finfo.offset,
+                finfo.size,
+                self.raw_version,
+            );
+
+            if let Some(cb) = callback {
+                cb(
+                    index + 1,
+                    total,
+                    &finfo.file_name_str_with_encoding(self.encoding),
+                );
+            }
+        }
+
+        let version_size = std::mem::size_of::<SpfVersion>();
+        let header_size = std::mem::size_of::<SpfHeader>();
+        let index_start =
+            output.len() - version_size - header_size - self.header.header_size as usize;
+        for index in 0..finfos.len() {
+            let start = index_start + index * FINFO_SIZE;
+            let end = start + FINFO_SIZE;
+            let record: &mut [u8; FINFO_SIZE] = (&mut output[start..end])
+                .try_into()
+                .expect("FINFO record has fixed size");
+            crypto::crypt_finfo(record);
+        }
+
+        let version_offset = output.len() - version_size;
+        output[version_offset..].copy_from_slice(&(self.version as u32).to_le_bytes());
+        output
+            .flush()
+            .context("Failed to flush decrypted SPF data")?;
+        drop(output);
+        file.sync_all()
+            .context("Failed to sync decrypted SPF data")?;
+
+        Ok(())
+    }
+
+    fn verify_decrypted_file(&self, path: &Path) -> Result<()> {
+        let converted = Self::open(path).context("Failed to reopen decrypted SPF")?;
+        if converted.is_encrypted() {
+            bail!("Decrypted SPF still has the encryption flag");
+        }
+        if converted.version() != self.version
+            || converted.header.header_size != self.header.header_size
+            || converted.header.file_id != self.header.file_id
+            || converted.header.desc != self.header.desc
+            || converted.total_size() != self.total_size()
+        {
+            bail!("Decrypted SPF metadata does not match the source");
+        }
+
+        let source_infos = self.file_infos();
+        let converted_infos = converted.file_infos();
+        let index_matches = source_infos.len() == converted_infos.len()
+            && source_infos
+                .iter()
+                .zip(&converted_infos)
+                .all(|(source, output)| {
+                    source.file_name == output.file_name
+                        && source.offset == output.offset
+                        && source.size == output.size
+                        && source.res_id == output.res_id
+                });
+        if !index_matches {
+            bail!("Decrypted SPF index does not match the source");
+        }
+
+        let issues = converted.verify()?;
+        if !issues.is_empty() {
+            bail!(
+                "Decrypted SPF verification found {} issue(s): {}",
+                issues.len(),
+                issues.join("; ")
+            );
+        }
+
+        Ok(())
+    }
+}
+
+fn temporary_output_path(output_path: &Path) -> PathBuf {
+    let parent = output_path.parent().unwrap_or_else(|| Path::new("."));
+    let name = output_path
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy();
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    parent.join(format!(".{name}.{}.{}.tmp", std::process::id(), unique))
 }

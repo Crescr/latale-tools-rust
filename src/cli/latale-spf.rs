@@ -73,6 +73,15 @@ enum Commands {
         spf_file: PathBuf,
     },
 
+    /// 将加密 SPF 转换为未加密 SPF
+    Decrypt {
+        /// 加密 SPF 文件路径
+        spf_file: PathBuf,
+        /// 输出文件路径（默认为输入文件旁的 {name}-plain.SPF）
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+
     /// 解包 SPF 文件到目录
     Unpack {
         /// SPF 文件路径
@@ -120,6 +129,9 @@ fn main() -> Result<()> {
         Commands::Verify { spf_file } => {
             cmd_verify(&spf_file)?;
         }
+        Commands::Decrypt { spf_file, output } => {
+            cmd_decrypt(&spf_file, output.as_deref())?;
+        }
         Commands::Unpack {
             spf_file,
             output,
@@ -149,6 +161,69 @@ fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+fn cmd_decrypt(spf_file: &std::path::Path, output: Option<&std::path::Path>) -> Result<()> {
+    let output_path = output
+        .map(PathBuf::from)
+        .unwrap_or_else(|| decrypted_output_path(spf_file));
+    let reader = SpfReader::open(spf_file)
+        .with_context(|| format!("无法打开 SPF 文件: {}", spf_file.display()))?;
+
+    print_section_header("解密转换", spf_file.display());
+    println!("版本号:      {}", reader.version());
+    println!(
+        "加密状态:    {}",
+        if reader.is_encrypted() {
+            "已加密"
+        } else {
+            "未加密"
+        }
+    );
+    println!("文件数量:    {}", reader.file_count());
+    println!("输出文件:    {}", output_path.display());
+
+    if !reader.is_encrypted() {
+        bail!("输入 SPF 已经是未加密格式");
+    }
+    if output_path.exists() {
+        bail!("输出文件已存在: {}", output_path.display());
+    }
+
+    println!();
+    println!("[执行] 正在转换为未加密 SPF...");
+    println!();
+
+    let total = reader.file_count();
+    let callback = |current: usize, total: usize, name: &str| {
+        let width = total.to_string().len();
+        println!("  [{:>width$}/{}] {}", current, total, name);
+    };
+    let start = Instant::now();
+    reader
+        .decrypt_to(&output_path, Some(&callback))
+        .context("SPF 解密转换失败")?;
+    let elapsed = start.elapsed().as_millis();
+
+    println!();
+    println!(
+        "[完成] 已转换 {} 个文件 -> {}，耗时 {}",
+        total,
+        output_path.display(),
+        format_duration(elapsed)
+    );
+    println!();
+
+    Ok(())
+}
+
+fn decrypted_output_path(input: &std::path::Path) -> PathBuf {
+    let stem = input.file_stem().unwrap_or_default().to_string_lossy();
+    let extension = input
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .unwrap_or("SPF");
+    input.with_file_name(format!("{stem}-plain.{extension}"))
 }
 
 fn cmd_info(spf_file: &std::path::Path, list: bool) -> Result<()> {
