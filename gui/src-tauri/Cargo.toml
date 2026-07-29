@@ -2,7 +2,7 @@
 name = "latale-tools-gui"
 version = "0.0.5"
 description = "Desktop interface for LaTale resource tools"
-authors = ["LaTale Tools Contributors"]
+authors = ["元气君"]
 edition = "2021"
 autobins = false
 default-run = "latale-tools"

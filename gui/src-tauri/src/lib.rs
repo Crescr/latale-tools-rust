@@ -197,6 +197,25 @@ async fn spf_unpack(app: AppHandle, path: String) -> CommandResult<OperationResu
 }
 
 #[tauri::command]
+async fn spf_decrypt(app: AppHandle, path: String) -> CommandResult<OperationResult> {
+    tauri::async_runtime::spawn_blocking(move || {
+        decrypt_spf(Path::new(&path), |current, total, item| {
+            let _ = app.emit(
+                "operation-progress",
+                ProgressEvent {
+                    operation: "SPF 解密转换".to_owned(),
+                    current,
+                    total,
+                    item: item.to_owned(),
+                },
+            );
+        })
+    })
+    .await
+    .map_err(display_error)?
+}
+
+#[tauri::command]
 async fn spf_unpack_to_sqlite(
     app: AppHandle,
     path: String,
@@ -508,6 +527,26 @@ where
     })
 }
 
+fn decrypt_spf<F>(input: &Path, progress: F) -> CommandResult<OperationResult>
+where
+    F: Fn(usize, usize, &str),
+{
+    let reader = SpfReader::open(input).map_err(display_error)?;
+    if !reader.is_encrypted() {
+        return Err("该 SPF 已经是未加密文件".to_owned());
+    }
+
+    let output = decrypted_spf_path(input);
+    reader
+        .decrypt_to(&output, Some(&progress))
+        .map_err(display_error)?;
+
+    Ok(OperationResult {
+        output_path: output.to_string_lossy().into_owned(),
+        summary: format!("已转换为未加密 SPF，共 {} 个文件", reader.file_count()),
+    })
+}
+
 fn import_ldt_table(
     connection: &mut Connection,
     path: &Path,
@@ -667,6 +706,14 @@ fn containing_directory(path: &Path) -> PathBuf {
         .to_path_buf()
 }
 
+fn decrypted_spf_path(path: &Path) -> PathBuf {
+    let stem = path
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or("output");
+    path.with_file_name(format!("{stem}-plain.SPF"))
+}
+
 fn display_error(error: impl std::fmt::Display) -> String {
     error.to_string()
 }
@@ -685,6 +732,7 @@ pub fn run() {
             spf_info,
             spf_verify,
             spf_unpack,
+            spf_decrypt,
             spf_unpack_to_sqlite,
             spf_registry,
             spf_pack,
@@ -750,7 +798,29 @@ mod tests {
             .is_empty());
         assert_eq!(containing_directory(&path), directory);
 
+        let result = decrypt_spf(&path, |_, _, _| {}).expect("SPF decryption should succeed");
+        let output = directory.join("ROWID-plain.SPF");
+        assert_eq!(PathBuf::from(result.output_path), output);
+        let decrypted = SpfReader::open(&output).expect("decrypted SPF should load");
+        assert!(!decrypted.is_encrypted());
+        assert!(decrypted
+            .verify()
+            .expect("decrypted SPF verification should run")
+            .is_empty());
+        let resource = decrypted
+            .file_infos()
+            .into_iter()
+            .find(|finfo| {
+                finfo.file_name_str_with_encoding(decrypted.encoding()) == "DATA/LDT/GUI_TEST.LDT"
+            })
+            .expect("decrypted resource should exist");
+        assert_eq!(
+            decrypted.get_file_data(&resource).as_ref(),
+            b"gui test".as_slice()
+        );
+
         std::fs::remove_file(path).expect("test SPF should be removed");
+        std::fs::remove_file(output).expect("decrypted SPF should be removed");
         std::fs::remove_dir(directory).expect("test directory should be removed");
     }
 

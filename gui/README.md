@@ -4,7 +4,7 @@
 
 ## 功能
 
-- SPF：查看包信息和文件列表、识别加密状态、验证、解包；ROWID 包可解包并生成 `latale.db`。
+- SPF：查看包信息和文件列表、识别加密状态、验证、解包，以及将加密包转换为同目录下的未加密副本；ROWID 包可解包并生成 `latale.db`。
 - LDT：查看全部表格数据，执行 LDT 和 CSV 双向转换。
 - STG：查看 Stage/Group/Map 数量，执行 STG 和 JSON 双向转换。
 - SPF 打包：从注册表选择资源类型，支持明文或加密打包。
@@ -64,7 +64,8 @@ npm run tauri build
 `Run workflow`。构建完成后，在任务页面的 `Artifacts` 区域下载
 `latale-tools-windows-x64`。
 
-推送 `v*` 格式的标签也会自动构建。例如：
+推送与项目版本一致的 `v*` 标签会自动构建，并在构建成功后创建 GitHub
+Release、生成 Release Notes、上传全部安装包、CLI 和使用说明。例如：
 
 ```bash
 git tag v0.0.5
@@ -73,8 +74,10 @@ git push origin v0.0.5
 
 下载的构建产物包括桌面版独立 EXE、NSIS 安装程序、MSI 安装包，以及
 `latale-spf`、`latale-ldt`、`latale-stg` 三个 CLI 工具和对应使用说明。
-文件名统一使用小写字母和连字符。安装后的桌面程序文件名为
-`latale-tools.exe`；应用和安装界面仍显示为 “LaTale Tools”。
+三个 CLI 的 Release 文件名固定为 `latale-spf.exe`、`latale-ldt.exe` 和
+`latale-stg.exe`；版本号、作者和反馈方式已写入 Windows 文件属性。GUI
+安装包仍使用版本号区分。安装后的桌面程序文件名为 `latale-tools.exe`；
+应用和安装界面仍显示为 “LaTale Tools”。
 
 ## 目录
 

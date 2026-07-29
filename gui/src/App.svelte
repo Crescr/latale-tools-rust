@@ -243,6 +243,14 @@
     if (result) successMessage = `${result.summary} · ${result.outputPath}`;
   }
 
+  async function decryptSpf() {
+    if (!spfPath || !spfInfoData?.encrypted) return;
+    const result = await withTask(() =>
+      invoke<OperationResult>("spf_decrypt", { path: spfPath }),
+    );
+    if (result) successMessage = `${result.summary} · ${result.outputPath}`;
+  }
+
   async function unpackSpfToSqlite() {
     if (!spfPath || spfInfoData?.fileId !== 3) return;
     const result = await withTask(() =>
@@ -499,6 +507,9 @@
             <div class="action-row">
               <div class="file-title"><FileArchive size={20} /><div><strong>{fileName(spfInfoData.path)}</strong><span>{spfInfoData.registryName ?? "未注册资源包"} · {spfInfoData.encoding}</span></div></div>
               <button class="button secondary" disabled={busy} onclick={verifySpf}><FileCheck2 size={17} />验证</button>
+              {#if spfInfoData.encrypted}
+                <button class="button secondary" disabled={busy} onclick={decryptSpf}><LockKeyhole size={17} />转为未加密</button>
+              {/if}
               <button class="button primary" disabled={busy} onclick={unpackSpf}><FolderInput size={17} />解包</button>
             </div>
 
@@ -667,7 +678,7 @@
         </div>
       {:else}
         <div class="settings-layout">
-          <div class="settings-card"><Wrench size={24} /><h3>LaTale Tools</h3><p>SPF、LDT 和 STG 资源工具。</p><div class="about-list"><span>版本<strong>0.0.5</strong></span><span>支持格式<strong>SPF / LDT / STG</strong></span><span>文件处理<strong>仅限本机</strong></span></div></div>
+          <div class="settings-card"><Wrench size={24} /><h3>LaTale Tools</h3><p>SPF、LDT 和 STG 资源工具。</p><div class="about-list"><span>版本<strong>0.0.5</strong></span><span>作者<strong>元气君</strong></span><span>需求与 Bug<strong>QQ: 915994204</strong></span></div></div>
           <div class="settings-card"><Settings size={24} /><h3>默认行为</h3><label class="setting-row"><span>SPF 打包默认不加密</span><BadgeCheck size={18} /></label><label class="setting-row"><span>解包与 LDT 转换保存到输入文件同目录</span><BadgeCheck size={18} /></label><label class="setting-row"><span>拖入文件后自动选择工具</span><BadgeCheck size={18} /></label></div>
         </div>
       {/if}

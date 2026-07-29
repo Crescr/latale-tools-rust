@@ -40,8 +40,10 @@
       "icons/icon.ico"
     ],
     "category": "Utility",
+    "publisher": "元气君",
+    "copyright": "元气君 · 提需求和 Bug：QQ: 915994204",
     "shortDescription": "LaTale 游戏资源查看、转换与打包工具",
-    "longDescription": "查看、转换和打包 SPF、LDT 与 STG 文件。",
+    "longDescription": "查看、转换和打包 SPF、LDT 与 STG 文件。提需求和 Bug：QQ: 915994204",
     "fileAssociations": [
       {
         "ext": ["spf"],
