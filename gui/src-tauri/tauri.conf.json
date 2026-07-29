@@ -62,6 +62,9 @@
       }
     ],
     "windows": {
+      "wix": {
+        "language": "zh-CN"
+      },
       "nsis": {
         "installMode": "currentUser",
         "installerHooks": "./windows/installer-hooks.nsh",
