@@ -61,6 +61,7 @@
     { value: "BIG5", label: "BIG5（台服）" },
     { value: "EUC-KR", label: "EUC-KR（韩服）" },
     { value: "UTF-8", label: "UTF-8（通用）" },
+    { value: "Shift-Jis", label: "Shift-Jis（日本）" },
   ];
 
   let activeView: ViewId = "home";
