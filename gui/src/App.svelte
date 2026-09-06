@@ -60,8 +60,8 @@
     { value: "GBK", label: "GBK（私服）" },
     { value: "BIG5", label: "BIG5（台服）" },
     { value: "EUC-KR", label: "EUC-KR（韩服）" },
-    { value: "UTF-8", label: "UTF-8（通用）" },
     { value: "SHIFT_JIS", label: "SHIFT-JIS（日本）" },
+    { value: "UTF-8", label: "UTF-8（通用）" },
   ];
 
   let activeView: ViewId = "home";
